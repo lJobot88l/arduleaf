@@ -22,10 +22,19 @@ void setup()
     pinMode(AFB, INPUT);
     pinMode(BReqIdent, OUTPUT);
     pinMode(BFB, INPUT);
+    pinMode(VReqIdent, INPUT);
+    pinMode(VFB, OUTPUT);
     pinMode(R, OUTPUT);
     pinMode(G, OUTPUT);
     pinMode(B, OUTPUT);
-    if(Serial.write(0) != 0)
+
+    digitalWrite(AReqIdent, LOW); // Turns off all output pins bc that apparently does not reset (reee)
+    digitalWrite(BReqIdent, LOW);
+    digitalWrite(VFB, LOW);
+    digitalWrite(R, LOW);
+    digitalWrite(G, LOW);
+    digitalWrite(B, LOW);
+    if(Serial.write(1) != 0)
     {
         id = 0;
         Identnext();
@@ -49,7 +58,7 @@ void setup()
                 s = millis();
             }
 
-            if (digitalRead(AFB) == LOW && hasVerifiedA) // Waits for feedback from this panel
+            if (digitalRead(AFB) == LOW && hasVerifiedA) // Once signal turns off new panel can be registered
             {
                 hasVerifiedA = false;
             }
@@ -60,30 +69,64 @@ void setup()
 
             if(millis() - s > 1000)
             {
-                break;
+                break; // Timeout
             }
         }
     } 
     else
     {
         isMaster = false;
-        pinMode(VReqIdent, INPUT);
-        pinMode(VFB, OUTPUT);
+        
+
         Ident();
+        bool wasPingedfromA = false;
+        bool wasPingedfromB = false;
+        int s = millis();
         while(true) // Sends ping if new panel registered
         {
-            if(digitalRead(AFB) == HIGH || digitalRead(BFB) == HIGH) // Waits for feedback from output A
+            if(digitalRead(AFB) == HIGH && !wasPingedfromA)
             {
                 digitalWrite(VFB, HIGH);
-                break;
+                wasPingedfromA = true;
+            }
+            if(digitalRead(BFB) == HIGH && !wasPingedfromB) // Waits for feedback from both outputs and forwards them to master
+            {
+                digitalWrite(VFB, HIGH);
+                wasPingedfromB = true;
+            }
+
+            if(digitalRead(AFB) == LOW && wasPingedfromA) // Forwards FB signal turning off
+            {
+                wasPingedfromA = false;
+                digitalWrite(VFB, LOW);
+            }
+            if (digitalRead(BFB) == LOW && wasPingedfromB)
+            {
+                wasPingedfromB = false;
+                digitalWrite(VFB, LOW);
+            }
+            if (millis() - s > 1000)
+            {
+                break; // Timeout
             }
         }
     }
+
+    // Test
+    if(id == 0)
+    {
+        digitalWrite(R, HIGH);
+    }
+    if (id == 1)
+    {
+        digitalWrite(G, HIGH);
+    }
+
 }
 
 void loop() 
 {
-    if(Serial.available())
+    if(Serial.available() == 0)
     {
         byte bytes[64];
         Serial.readBytes(bytes, 64);
@@ -94,11 +137,9 @@ void loop()
             }
             else if(bytes[1] == 0x02)
             { // Set static colour, format: ID COL 000000
-
                 analogWrite(R, bytes[2]);
                 analogWrite(G, bytes[3]);
                 analogWrite(B, bytes[4]);
-                digitalWrite(13, HIGH);
             }
         }
     }
